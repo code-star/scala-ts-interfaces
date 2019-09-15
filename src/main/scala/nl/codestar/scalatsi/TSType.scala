@@ -3,7 +3,7 @@ package nl.codestar.scalatsi
 import nl.codestar.scalatsi.TypescriptType._
 
 import scala.annotation.implicitNotFound
-import scala.collection.immutable.ListMap
+import scala.reflect.runtime.universe.WeakTypeTag
 
 /* TODO: Move this somewhere to the docs
  * To define an implicit TSType[T]:
@@ -79,29 +79,21 @@ object TSType {
   def sameAs[Source, Target](implicit tsType: TSType[Target]): TSType[Source] =
     TSType(tsType.get)
 
-  /** Create a Typescript alias "T" for type T, with the definition of Alias
-    *
-    * @example alias[Foo, String] will generate typescript `type Foo = string`
-    * @see sameAs
-    */
-  def alias[T, Alias](implicit tsType: TSType[Alias], ct: Manifest[T]): TSNamedType[T] =
-    alias[T, Alias](ct.runtimeClass.getSimpleName)
-
   /** Create a Typescript alias "name" for type T, with the definition of Alias
     *
-    * @example alias[Foo, String]("IFoo") will generate typescript `type IFoo = string`
+    * @example alias[Foo, String]() will generate typescript `type Foo = string`
     * @see sameAs
     */
-  def alias[T, Alias](name: String)(implicit tsType: TSType[Alias]): TSNamedType[T] =
-    alias(name, tsType.get)
+  def alias[T: WeakTypeTag, Alias]()(implicit tsType: TSType[Alias]): TSNamedType[T] =
+    alias[T](tsType.get)
 
   /** Create a Typescript alias "name" for type T, with the definition of tsType
     *
-    * @example alias[Foo]("IFoo", TSString) will generate typescript `type IFoo = string`
+    * @example alias[Foo](TSString) will generate typescript `type Foo = string`
     * @see sameAs
     */
-  def alias[T](name: String, tsType: TypescriptType): TSNamedType[T] =
-    TSNamedType(TSAlias(name, tsType))
+  def alias[T: WeakTypeTag](tsType: TypescriptType): TSNamedType[T] =
+    TSNamedType(TSAlias(TSRef[T], tsType))
 
   /** Create "name" as the typescript type for T, with "name" being defined elsewhere
     * external[Foo]("IXyz") will use "IXyz" as the typescript type every time something contains a Foo
@@ -109,40 +101,38 @@ object TSType {
   def external[T](name: String): TSNamedType[T] =
     TypescriptType.fromString(name) match {
       case t: TSTypeReference => TSNamedType(t)
-      case t =>
-        throw new IllegalArgumentException(s"String $name is a predefined type $t")
+      case t                  => throw new IllegalArgumentException(s"String $name is a predefined type $t")
     }
 
   /** Create an interface "name" for T
     *
-    * @example interface[Foo]("MyFoo", "bar" -> TSString) will output "interface MyFoo { bar: string }" */
-  def interface[T](name: String, members: (String, TypescriptType)*): TSIType[T] =
-    TSIType(TSInterface(name, ListMap(members: _*)))
-
-  /** Create an interface "IClassname" for T
-    *
-    * @example interface[Foo]("bar" -> TSString) will output "interface IFoo { bar: string }" */
-  def interface[T](members: (String, TypescriptType)*)(implicit ct: Manifest[T]): TSIType[T] =
-    interface[T]("I" + ct.runtimeClass.getSimpleName, members: _*)
+    * @example
+    * interface[Foo]("bar" -> TSString) will output "interface Foo { bar: string }" in the package of Foo
+    **/
+  def interface[T: WeakTypeTag](members: (String, TypescriptType)*): TSIType[T] =
+    TSIType(TSInterface(TSRef[T], members: _*))
 
   /** Create an indexed interface for T
     *
-    * @example interfaceIndexed[Foo]("IFooLookup", "key", TSString, TSInt) will output "interface IFooLookup { [key: string] : Int }"
+    * @example interfaceIndexed[Foo]("key", TSString, TSInt) will output "interface Foo { [key: string] : Int }"
     */
-  def interfaceIndexed[T](
-    name: String,
+  def interfaceIndexed[T: WeakTypeTag](
     indexName: String = "key",
     indexType: TypescriptType = TSString,
     valueType: TypescriptType
   ): TSNamedType[T] =
-    TSNamedType(TSInterfaceIndexed(name, indexName, indexType, valueType))
+    TSNamedType(TSNamedIndexedInterface(TSRef[T], TSIndexedInterface(indexName, indexType, valueType)))
 }
 
 @implicitNotFound(
   "Could not find an implicit TSNamedType[${T}] in scope. Make sure you created and imported a named typescript mapping for the type."
 )
-trait TSNamedType[T] extends TSType[T] { self =>
+trait TSNamedType[T] extends TSType[T] {
   def get: TypescriptNamedType
+
+  def withName(name: String): TSNamedType[T]           = TSNamedType(get.withName(name))
+  def withNamespace(namespace: String): TSNamedType[T] = TSNamedType(get.withNamespace(namespace))
+
   override def toString: String = s"TSNamedType($get)"
 }
 

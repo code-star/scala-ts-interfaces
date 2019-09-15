@@ -6,14 +6,16 @@ import nl.codestar.scalatsi.TypescriptType._
 case class Person(name: String, age: Int)
 
 class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
+  def ref(s: String) = TSRef(TSIdentifier(s), TSNamespace[MacroTests] append TSIdentifier("MacroTests"))
+
   "The case class to TypeScript type macro" should "be able to translate a simple case class" in {
     case class Person(name: String, age: Int)
-    TSType.fromCaseClass[Person] shouldBe TSType.interface("IPerson", "name" -> TSString, "age" -> TSNumber)
+    TSType.fromCaseClass[Person].get shouldBe TSInterface(ref("Person"), "name" -> TSString, "age" -> TSNumber)
   }
 
   it should "handle optional types" in {
     case class TestOptional(opt: Option[Long])
-    TSType.fromCaseClass[TestOptional] shouldBe TSType.interface("ITestOptional", "opt" -> TSUnion.of(TSNumber, TSUndefined))
+    TSType.fromCaseClass[TestOptional].get shouldBe TSInterface(ref("TestOptional"), "opt" -> TSUnion.of(TSNumber, TSUndefined))
   }
 
   it should "handle nested definitions" in {
@@ -22,7 +24,7 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
 
     val tsA: TSIType[A] = TSType.fromCaseClass
 
-    TSType.fromCaseClass[B] shouldBe TSType.interface("IB", "a" -> tsA.get)
+    TSType.fromCaseClass[B].get shouldBe TSInterface(ref("B"), "a" -> tsA.get)
   }
 
   "The sealed trait/class to Typescript type macro" should "handle sealed traits" in {
@@ -35,7 +37,7 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
 
     // TODO: This will probably not emit Foo or Bar, when used, test this
 
-    TSType.fromSealed[FooOrBar] shouldBe TSType.alias("FooOrBar", TSTypeReference("IFoo") | TSTypeReference("IBar"))
+    TSType.fromSealed[FooOrBar].get shouldBe TSAlias(ref("FooOrBar"), tsFoo.get.asReference | tsBar.get.asReference)
   }
 
   it should "handle sealed abstract classes" in {
@@ -47,10 +49,10 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
     implicit val tsFoo = TSType.fromCaseClass[Foo] + ("type" -> "Foo")
     implicit val tsBar = TSType.fromCaseClass[Bar] + ("type" -> "Bar")
 
-    tsFoo shouldBe TSType.interface("IFoo", "foo" -> TSString, "type" -> TSLiteralString("Foo"))
-    tsBar shouldBe TSType.interface("IBar", "bar" -> TSNumber, "type" -> TSLiteralString("Bar"))
+    tsFoo.get shouldBe TSInterface(ref("Foo"), "foo" -> TSString, "type" -> TSLiteralString("Foo"))
+    tsBar.get shouldBe TSInterface(ref("Bar"), "bar" -> TSNumber, "type" -> TSLiteralString("Bar"))
 
-    TSType.fromSealed[FooOrBar] shouldBe TSType.alias("FooOrBar", TSTypeReference("IFoo") | TSTypeReference("IBar"))
+    TSType.fromSealed[FooOrBar].get shouldBe TSAlias(ref("FooOrBar"), tsFoo.get.asReference | tsBar.get.asReference)
   }
 
   it should "handle sealed traits with a non-named mapping" in {
@@ -61,35 +63,42 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
     implicit val tsFoo = TSType.fromCaseClass[Foo]
     implicit val tsBar = TSType.sameAs[Bar, Int]
 
-    tsFoo shouldBe TSType.interface("IFoo", "foo" -> TSString)
+    tsFoo.get shouldBe TSInterface(ref("Foo"), "foo" -> TSString)
     tsBar.get shouldBe TSNumber
 
-    TSType.fromSealed[FooOrBar] shouldBe TSType.alias("FooOrBar", TSTypeReference("IFoo") | TSNumber)
+    TSType.fromSealed[FooOrBar].get shouldBe TSAlias(ref("FooOrBar"), tsFoo.get.asReference | TSNumber)
   }
 
+  // Package cannot be inferred when the type is defined anonymously
+  sealed trait LinkedList
+  case object Nil                                     extends LinkedList
+  case class Node(value: Int, next: LinkedList = Nil) extends LinkedList
+
   it should "handle sealed traits with recursive definitions" in {
-    sealed trait LinkedList
-    case object Nil                                     extends LinkedList
-    case class Node(value: Int, next: LinkedList = Nil) extends LinkedList
 
     implicit val nilType: TSType[Nil.type] = TSType(TSNull)
-    implicit val llType: TSType[Node]      = TSType.alias("INode", TSNull | TSTypeReference("ILinkedList"))
+    implicit val llType: TSNamedType[Node] = TSType.alias[Node](TSNull | TSTypeReference(ref("LinkedList")))
 
-    TSType.fromSealed[LinkedList] shouldBe TSType.alias("LinkedList", TSNull | TSTypeReference("INode"))
+    val fromSealed = TSType.fromSealed[LinkedList]
+    val expected   = TSType.alias[LinkedList](TSNull | TSTypeReference(ref("Node")))
+
+    llType.get.ref shouldBe ref("Node")
+    fromSealed.get.ref shouldBe ref("LinkedList")
+
+    fromSealed shouldBe expected
   }
 
   it should "handle sealed traits without subclasses" in {
     sealed trait Empty
 
     // Expect a warning here
-    TSType.fromSealed[Empty] shouldBe TSNamedType[Empty](TSAlias("IEmpty", TSNever))
+    TSType.fromSealed[Empty] shouldBe TSNamedType[Empty](TSAlias(ref("Empty"), TSNever))
   }
 
+  sealed trait Single
+  case class A1(foo: Int) extends Single
   it should "handle sealed traits with a single subclass" in {
-    sealed trait Single
-    case class A(foo: Int) extends Single
-
-    TSType.fromSealed[Single] shouldBe TSType.alias("Single", TSTypeReference("IA"))
+    TSType.fromSealed[Single] shouldBe TSType.alias[Single](TSTypeReference(ref("A1")))
   }
 
   "TSType.getOrGenerate" should "use available implicit if in scope" in {
@@ -100,38 +109,35 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
     TSType.getOrGenerate[A] shouldBe theSameInstanceAs(tsA)
   }
 
+  case class A2(foo: String)
   it should "use available implicit TSNamedType if in scope" in {
-    case class A(foo: String)
-
     import dsl._
-    implicit val tsA: TSNamedType[A] = TSType.fromCaseClass[A] + ("type" -> "A")
+    implicit val tsA: TSNamedType[A2] = TSType.fromCaseClass[A2] + ("type" -> "A")
 
-    TSNamedType.getOrGenerate[A] shouldBe TSType.interface(
-      "IA",
+    TSNamedType.getOrGenerate[A2] shouldBe TSType.interface[A2](
       "foo"  -> TSString,
       "type" -> TSLiteralString("A")
     )
   }
 
+  case class A3(foo: String)
   it should "use case class generator for case classes" in {
-    case class A(foo: String)
-
-    val generated     = TSType.getOrGenerate[A]
-    val fromCaseClass = TSType.fromCaseClass[A]
+    val generated     = TSType.getOrGenerate[A3]
+    val fromCaseClass = TSType.fromCaseClass[A3]
 
     generated shouldBe fromCaseClass
-    fromCaseClass shouldBe TSType.interface("IA", "foo" -> TSString)
+    fromCaseClass shouldBe TSType.interface[A3]("foo" -> TSString)
   }
 
+  sealed trait A4
+  case class B(foo: String) extends A4
   it should "use sealed trait generator for sealed traits" in {
-    sealed trait A
-    case class B(foo: String) extends A
 
-    val generated  = TSType.getOrGenerate[A]
-    val fromSealed = TSType.fromSealed[A]
+    val generated  = TSType.getOrGenerate[A4]
+    val fromSealed = TSType.fromSealed[A4]
 
     generated shouldBe fromSealed
-    fromSealed shouldBe TSType.alias("A", TSTypeReference("IB"))
+    fromSealed shouldBe TSType.alias[A4](TSTypeReference(ref("B")))
   }
 
   it should "give a compile error for unsupported types if no implicit is available" in {
@@ -143,19 +149,18 @@ class MacroTests extends FlatSpec with Matchers with DefaultTSTypes {
   "TSIType.getOrGenerate" should "use available implicit if in scope" in {
     case class A(foo: String)
 
-    implicit val tsA: TSIType[A] = TSType.interface("Hi", "bar" -> TSNumber)
+    implicit val tsA: TSIType[A] = TSType.interface[A]("bar" -> TSNumber)
 
     TSType.getOrGenerate[A] shouldBe theSameInstanceAs(tsA)
   }
 
+  case class A5(foo: String)
   it should "use case class generator for case classes" in {
-    case class A(foo: String)
-
-    val generated     = TSIType.getOrGenerate[A]
-    val fromCaseClass = TSType.fromCaseClass[A]
+    val generated     = TSIType.getOrGenerate[A5]
+    val fromCaseClass = TSType.fromCaseClass[A5]
 
     generated shouldBe fromCaseClass
-    fromCaseClass shouldBe TSType.interface("IA", "foo" -> TSString)
+    fromCaseClass shouldBe TSType.interface[A5]("foo" -> TSString)
   }
 
   it should "give a compile error for unsupported types if no implicit is available" in {

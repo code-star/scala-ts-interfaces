@@ -1,0 +1,22 @@
+@(imports: Seq[String], classes: Seq[String])
+
+package nl.codestar.scalatsi.generator
+
+/** User imports */
+@for(imp <- imports) {
+import @imp
+}
+
+import _root_.nl.codestar.scalatsi.TSNamedType
+import _root_.nl.codestar.scalatsi.TypescriptType.TypescriptNamedType
+import _root_.java.io.File
+
+object UserClasses {
+
+  // If you get a generator or implicit not found error here, make sure you have defined a TSType[T] implicit and imported it
+  val outputClasses: Seq[(Class[_], TypescriptNamedType)] = Seq(
+    @for(userClass <- classes) {
+      classOf[@userClass] -> TSNamedType.getOrGenerate[@userClass].get
+    }
+  )
+}

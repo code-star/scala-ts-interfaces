@@ -14,20 +14,11 @@ private[scalatsi] class Macros(val c: blackbox.Context) {
     q"""{
        import _root_.nl.codestar.scalatsi.TSNamedType
        import _root_.nl.codestar.scalatsi.TypescriptType.{TSAlias, TSNever}
-       TSNamedType(TSAlias(${tsName[T]}, TSNever))
+       TSNamedType(TSAlias(${ref[T]}, TSNever))
      }"""
 
-  /** Change a Type into a "IType" for a class/trait, and "Type" otherwise */
-  private def tsName[T: c.WeakTypeTag]: String = {
-    val symbol = c.weakTypeOf[T].typeSymbol
-
-    val prefix = Option(symbol)
-      .collect({ case clsSymbol if clsSymbol.isClass => clsSymbol.asClass })
-      .filterNot(_.isDerivedValueClass)
-      .map(_ => "I")
-
-    prefix.getOrElse("") + symbol.name.toString
-  }
+  private def ref[T](implicit tt: c.WeakTypeTag[T]): Tree =
+    q""" _root_.nl.codestar.scalatsi.TSRef(${tt.tpe.typeSymbol.fullName})"""
 
   private def macroUtil = new MacroUtil[c.type](c)
 
@@ -113,7 +104,7 @@ private[scalatsi] class Macros(val c: blackbox.Context) {
      import _root_.nl.codestar.scalatsi.TypescriptType.TSUndefined
      import _root_.nl.codestar.scalatsi.{TSNamedType, TSIType}
      import _root_.scala.collection.immutable.ListMap
-     TSIType(TSInterface("I" + ${symbol.name.toString}, ListMap(
+     TSIType(TSInterface(${ref[T]}, ListMap(
        ..$members
      )))
     }"""
@@ -133,8 +124,6 @@ private[scalatsi] class Macros(val c: blackbox.Context) {
     if (!symbol.isSealed)
       c.abort(c.enclosingPosition, s"Expected sealed trait or sealed class, but found: $T")
 
-    val name = symbol.name.toString
-
     symbol.knownDirectSubclasses.toSeq match {
       case Seq() =>
         val symbolType =
@@ -147,7 +136,7 @@ private[scalatsi] class Macros(val c: blackbox.Context) {
         q"""{
          import _root_.nl.codestar.scalatsi.TypescriptType
          import _root_.nl.codestar.scalatsi.TSNamedType
-         TSNamedType(TSAlias($name, TypescriptType.nameOrType(${getTSType(singleChild.asType.toType)}.get)))
+         TSNamedType(TSAlias(${ref[T]}, TypescriptType.nameOrType(${getTSType(singleChild.asType.toType)}.get)))
         }"""
       case children =>
         val operands = children map { symbol =>
@@ -159,7 +148,7 @@ private[scalatsi] class Macros(val c: blackbox.Context) {
         import TypescriptType.{TSAlias, TSUnion}
         import _root_.nl.codestar.scalatsi.TSNamedType
         import _root_.scala.collection.immutable.Vector
-        TSNamedType(TSAlias($name, TSUnion(Vector(..$operands))))
+        TSNamedType(TSAlias(${ref[T]}, TSUnion(Vector(..$operands))))
       }"""
     }
   }

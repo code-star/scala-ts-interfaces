@@ -1,7 +1,5 @@
 package nl.codestar.scalatsi
 
-import java.util.regex.Pattern
-
 import scala.collection.immutable.ListMap
 import TypescriptType._
 
@@ -26,7 +24,7 @@ object TypescriptType {
       case "undefined" => TSUndefined
       case "void"      => TSVoid
       case "object"    => TSObject
-      case _           => TSTypeReference(tpe)
+      case _           => TSTypeReference(TSRef(tpe))
     }
 
   /** Get a reference to a named type, or the type itself if it is unnamed or built-in */
@@ -37,12 +35,27 @@ object TypescriptType {
 
   /** A marker trait for a TS type that has a name */
   sealed trait TypescriptNamedType extends TypescriptType {
-    def name: String
-    require(isValidTSName(name), s"Not a valid TypeScript identifier: $name")
 
-    def asReference: TSTypeReference = TSTypeReference(name)
+    /** concrete implementation type (e.g. TSInterface) */
+    type Self <: TypescriptNamedType
+
+    /** A reference to the type */
+    val ref: TSRef
+
+    /** Return a reference to this type */
+    def asReference: TSTypeReference = TSTypeReference(ref)
+
+    /** Change the name of this type
+      * @see [[TSIdentifier.apply]]
+      **/
+    def withName(name: String): Self = withRef(ref.withName(name))
+
+    /** Change the namespace of this type
+      * @see [[TSNamespace.apply]]*/
+    def withNamespace(namespace: String): Self = withRef(ref.withNamespace(namespace))
+
+    protected def withRef(ref: TSRef): Self
   }
-  object TypescriptNamedType
 
   /** A marker trait for a TS type that can contain nested types */
   sealed trait TypescriptAggregateType extends TypescriptType {
@@ -54,8 +67,12 @@ object TypescriptType {
   }
 
   /** `type name = underlying` */
-  case class TSAlias(name: String, underlying: TypescriptType) extends TypescriptNamedType with TypescriptAggregateType {
+  final case class TSAlias(override val ref: TSRef, underlying: TypescriptType) extends TypescriptNamedType with TypescriptAggregateType {
+    override type Self = TSAlias
+
     override def nested: Set[TypescriptType] = Set(underlying)
+
+    override protected def withRef(ref: TSRef): TSAlias = this.copy(ref = ref)
   }
 
   case object TSAny                               extends TypescriptType
@@ -67,21 +84,25 @@ object TypescriptType {
   case class TSLiteralNumber(value: BigDecimal) extends TSLiteralType[BigDecimal]
   case class TSLiteralBoolean(value: Boolean)   extends TSLiteralType[Boolean]
 
-  case class TSEnum(name: String, const: Boolean, entries: ListMap[String, Option[Int]])
+  case class TSEnum(ref: TSRef, const: Boolean, entries: ListMap[String, Option[Int]])
       extends TypescriptNamedType
       with TypescriptAggregateType {
-    def nested: Set[TypescriptType] = Set(TSNumber)
+    override type Self = TSEnum
+
+    override def nested: Set[TypescriptType]           = Set(TSNumber)
+    override protected def withRef(ref: TSRef): TSEnum = this.copy(ref = ref)
   }
 
-  /** This type is used as a marker that a type with this name exists and is either already defined or externally defined
-    * Not a real Typescript type
-    * @note name takes from [Typescript specification](https://github.com/Microsoft/TypeScript/blob/master/doc/spec.md#3.8.2)
+  /** A reference to a typescript type
+    * @see https://github.com/Microsoft/TypeScript/blob/master/doc/spec.md#3.8.2
     * */
-  case class TSTypeReference(name: String) extends TypescriptNamedType {
-    override def asReference: TSTypeReference = this
+  sealed case class TSTypeReference(ref: TSRef) extends TypescriptNamedType {
+    override type Self = TSTypeReference
+    override def asReference: TSTypeReference                   = this
+    override protected def withRef(ref: TSRef): TSTypeReference = TSTypeReference(ref)
   }
 
-  /** Typescript indexed interfaces
+  /** Typescript anonymous indexed interfaces
     * { [indexName:indexType]: valueType}
     * @param indexType index type, TSNumber or TSString
     **/
@@ -93,18 +114,24 @@ object TypescriptType {
     )
     def nested: Set[TypescriptType] = Set(indexType, valueType)
   }
-  case class TSInterfaceIndexed(name: String, indexName: String = "key", indexType: TypescriptType, valueType: TypescriptType)
-      extends TypescriptNamedType
-      with TypescriptAggregateType {
-    require(
-      indexType == TSString || indexType == TSNumber,
-      s"TypeScript indexed interface $name can only have index type string or number, not $indexType"
-    )
-    def nested: Set[TypescriptType] = Set(indexType, valueType)
+  case class TSNamedIndexedInterface(ref: TSRef, interface: TSIndexedInterface) extends TypescriptNamedType with TypescriptAggregateType {
+    override type Self = TSNamedIndexedInterface
+
+    override def nested: Set[TypescriptType]                            = interface.nested
+    override protected def withRef(ref: TSRef): TSNamedIndexedInterface = this.copy(ref = ref)
   }
 
-  case class TSInterface(name: String, members: ListMap[String, TypescriptType]) extends TypescriptNamedType with TypescriptAggregateType {
-    def nested: Set[TypescriptType] = members.values.toSet
+  case class TSInterface private (ref: TSRef, members: ListMap[String, TypescriptType])
+      extends TypescriptNamedType
+      with TypescriptAggregateType {
+    override type Self = TSInterface
+
+    override def nested: Set[TypescriptType]                = members.values.toSet
+    override protected def withRef(ref: TSRef): TSInterface = this.copy(ref = ref)
+  }
+  object TSInterface {
+    def apply(ref: TSRef, members: ListMap[String, TypescriptType]): TSInterface = new TSInterface(ref, members)
+    def apply(ref: TSRef, members: (String, TypescriptType)*): TSInterface       = TSInterface(ref, ListMap(members: _*))
   }
   case class TSIntersection(of: Seq[TypescriptType]) extends TypescriptAggregateType { def nested: Set[TypescriptType] = of.toSet }
   object TSIntersection {
@@ -119,7 +146,7 @@ object TypescriptType {
   /** Typescript tuple: `[0.type, 1.type, ... n.type]` */
   case class TSTuple[E](of: Seq[TypescriptType]) extends TypescriptAggregateType { def nested: Set[TypescriptType] = of.toSet }
   object TSTuple {
-    def of(of: TypescriptType*) = TSTuple(of)
+    def of(of: TypescriptType*) = TSTuple(of.to(Seq))
   }
 
   case object TSUndefined extends TypescriptType
@@ -127,61 +154,8 @@ object TypescriptType {
     def nested: Set[TypescriptType] = of.toSet
   }
   object TSUnion {
-    def of(of: TypescriptType*) = TSUnion(of)
+    def of(of: TypescriptType*) = TSUnion(of.toSeq)
   }
   case object TSVoid extends TypescriptType
 
-  private val tsIdentifierPattern = Pattern.compile("[_$\\p{L}\\p{Nl}][_$\\p{L}\\p{Nl}\\p{Nd}\\{Mn}\\{Mc}\\{Pc}]*")
-  private[scalatsi] def isValidTSName(name: String): Boolean =
-    tsIdentifierPattern.matcher(name).matches() && !reservedKeywords.contains(name)
-
-  final private[scalatsi] val reservedKeywords: Set[String] = Set(
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "default",
-    "delete",
-    "do",
-    "else",
-    "enum",
-    "export",
-    "extends",
-    "false",
-    "finally",
-    "for",
-    "function",
-    "if",
-    "import",
-    "in",
-    "instanceof",
-    "new",
-    "null",
-    "return",
-    "super",
-    "switch",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "typeof",
-    "var",
-    "void",
-    "while",
-    "with",
-    // Strict mode
-    "as",
-    "implements",
-    "interface",
-    "let",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "static",
-    "yield"
-  )
 }

@@ -91,6 +91,8 @@ lazy val `scala-tsi` = (project in file("."))
     name := "scala-tsi",
     description := "Generate Typescript interfaces from your scala classes",
     libraryDependencies ++= Seq(
+      // Compatibility between 2.12 and 2.13 collections
+      "org.scala-lang.modules" %% "scala-collection-compat" % "2.0.0",
       // testing framework
       "org.scalatest" %% "scalatest" % "3.0.8" % "test"
     )

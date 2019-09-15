@@ -1,0 +1,12 @@
+@(targetLocation: String)
+
+package nl.codestar.scalatsi.generator
+
+import _root_.java.io.File
+
+/** Pass the user's output options to the scala generator app */
+object UserOptions {
+  val value = _root_.nl.codestar.scalatsi.output.OutputOptions(
+    targetLocation = new File("@targetLocation")
+  )
+}
