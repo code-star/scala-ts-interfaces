@@ -147,6 +147,8 @@ object TypescriptType {
   }
   case object TSVoid extends TypescriptType
 
+  case class TSFunction(arguments: List[(String, TypescriptType)], returnType: TypescriptType) extends TypescriptType
+
   private val tsIdentifierPattern = Pattern.compile("[_$\\p{L}\\p{Nl}][_$\\p{L}\\p{Nl}\\p{Nd}\\{Mn}\\{Mc}\\{Pc}]*")
   private[scalatsi] def isValidTSName(name: String): Boolean =
     tsIdentifierPattern.matcher(name).matches() && !reservedKeywords.contains(name)

@@ -79,5 +79,12 @@ class DefaultTSTypeTests extends AnyWordSpec with Matchers with DefaultTSTypes {
       "implicitly[TSType[java.util.List[Int]]]" should compile
       "implicitly[TSType[java.util.ArrayList[Int]]]" should compile
     }
+
+    "Function" in {
+      "implicitly[TSType[Function0[Int]]]" should compile
+      "implicitly[TSType[String => String]]" should compile
+      "implicitly[TSType[(Int, String) => Unit]]" should compile
+      "implicitly[TSType[(Int, Int, Int) => Int]]" should compile
+    }
   }
 }

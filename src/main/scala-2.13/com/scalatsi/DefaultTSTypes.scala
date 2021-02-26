@@ -7,6 +7,7 @@ trait DefaultTSTypes
   with ScalaTSTypes
   with CollectionTSTypes
   with TupleTSTypes
+  with FunctionTSTypes
   with JavaTSTypes
   with LiteralTSTypes
   with ScalaEnumTSTypes {}

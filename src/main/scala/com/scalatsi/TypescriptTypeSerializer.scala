@@ -31,8 +31,12 @@ object TypescriptTypeSerializer {
       case TSLiteralBoolean(v)    => v.toString()
       case TSLiteralNumber(v)     => v.toString()
       case TSLiteralString(v)     => s""""${v.replace("\"", "\"\"")}""""
+      case TSFunction(args, rt)   => s"(${serializeArgumentList(args)}) => ${serialize(rt)}"
     }
   }
+
+  private def serializeArgumentList(argList: List[(String, TypescriptType)]): String =
+    argList.map { case (n, t) => s"$n: ${serialize(t)}" }.mkString(", ")
 
   @deprecated("0.2.0", "Use emit[T]()")
   def emit[T](implicit tsType: TSNamedType[T]): String = emit[T]()(tsType)
@@ -85,8 +89,11 @@ object TypescriptTypeSerializer {
       case TSInterface(name, members) =>
         def symbol(required: Boolean) = if (required) ":" else "?:"
 
-        val mbs = members.map({ case (memberName, TSInterfaceEntry(tp, required)) =>
-          s"  $memberName${symbol(required)} ${serialize(tp)}"
+        val mbs = members.map({
+          case (memberName, TSInterfaceEntry(TSFunction(arguments, returnType), _)) =>
+            s"  $memberName(${serializeArgumentList(arguments)}): ${serialize(returnType)}"
+          case (memberName, TSInterfaceEntry(tp, required)) =>
+            s"  $memberName${symbol(required)} ${serialize(tp)}"
         })
 
         Some(s"""export interface $name {

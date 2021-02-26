@@ -125,3 +125,48 @@ trait TupleTSTypes {
     TSType(TSTuple.of(t1.get, t2.get, t3.get, t4.get, t5.get, t6.get))
   // TODO: Tuple7-21
 }
+
+trait FunctionTSTypes {
+  implicit def tsFunction0[R](implicit r: TSType[R]): TSType[() => R] =
+    TSType(TSFunction(List(), r.get))
+
+  implicit def tsFunction1[T1, R](implicit t1: TSType[T1], r: TSType[R]): TSType[T1 => R] =
+    TSType(
+      TSFunction(
+        List(
+          ("arg1", t1.get) // TODO: use reflection to get the real argument name
+        ),
+        r.get
+      )
+    )
+
+  implicit def tsFunction2[T1, T2, R](implicit t1: TSType[T1], t2: TSType[T2], r: TSType[R]): TSType[(T1, T2) => R] =
+    TSType(
+      TSFunction(
+        List(
+          ("arg1", t1.get),
+          ("arg2", t2.get)
+        ),
+        r.get
+      )
+    )
+
+  implicit def tsFunction3[T1, T2, T3, R](implicit
+    t1: TSType[T1],
+    t2: TSType[T2],
+    t3: TSType[T3],
+    r: TSType[R]
+  ): TSType[(T1, T2, T3) => R] =
+    TSType(
+      TSFunction(
+        List(
+          ("arg1", t1.get),
+          ("arg2", t2.get),
+          ("arg3", t3.get)
+        ),
+        r.get
+      )
+    )
+
+  // TODO: Function4-22
+}

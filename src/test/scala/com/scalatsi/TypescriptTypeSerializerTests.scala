@@ -235,4 +235,48 @@ class TypescriptTypeSerializerTests extends AnyFlatSpec with Matchers with Defau
     TypescriptTypeSerializer.emit()(y).trim should equal(expected)
   }
 
+  it should "serialize function members of interfaces" in {
+    val interface =
+      TSType.interface(
+        "TestInterface",
+        (
+          "fun1",
+          TSFunction(
+            List(
+              ("iarg", TSNumber),
+              ("sarg", TSString)
+            ),
+            TSVoid
+          )
+        ),
+        (
+          "fun2",
+          TSFunction(
+            List(
+              (
+                "farg",
+                TSFunction(
+                  List(
+                    ("iarg", TSNumber),
+                    ("sarg", TSString)
+                  ),
+                  TSVoid
+                )
+              )
+            ),
+            TSNumber
+          )
+        )
+      )
+
+    val serialized = TypescriptTypeSerializer.emit()(interface).trim
+
+    val expected =
+      """export interface TestInterface {
+        |  fun1(iarg: number, sarg: string): void
+        |  fun2(farg: (iarg: number, sarg: string) => void): number
+        |}""".stripMargin
+
+    serialized should equal(expected)
+  }
 }
