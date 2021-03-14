@@ -45,7 +45,8 @@ object TypescriptTypeSerializer {
 
   def emits(styleOptions: StyleOptions = StyleOptions(), types: Set[TypescriptNamedType]): String =
     types
-      .flatMap(discoverNestedNames(styleOptions))
+      .map(preprocess(styleOptions))
+      .flatMap(discoverNestedNames)
       .toSeq
       .sorted
       .flatMap(namedType => emitNamed(namedType)(styleOptions))
@@ -95,35 +96,32 @@ object TypescriptTypeSerializer {
     }
   }
 
-  private def discoverNestedNames(options: StyleOptions)(tp: TypescriptType): Set[TypescriptNamedType] = {
+  private def discoverNestedNames(tp: TypescriptType): Set[TypescriptNamedType] = {
     val me: Set[TypescriptNamedType] = tp match {
       case named: TypescriptNamedType => Set(named)
       case _                          => Set()
     }
     tp match {
-      case union: TSUnion =>
-        union.nested
-          .map {
-            case TSTypeReference(ref, Some(TSInterface(name, members)), Some(discriminatorValue)) =>
-              TSTypeReference(
-                ref,
-                Some(
-                  TSInterface(
-                    name,
-                    options.taggedUnionDiscriminator match {
-                      case Some(discriminatorField) =>
-                        members.+((discriminatorField, TSLiteralString(discriminatorValue)))
-                      case None => members
-                    }
-                  )
-                )
-              )
-            case other => other
-          }
-          .flatMap(discoverNestedNames(options)) ++ me
-      case TypescriptAggregateType(nested) =>
-        nested.flatMap(discoverNestedNames(options)) ++ me
-      case _ => me
+      case TypescriptAggregateType(nested) => nested.flatMap(discoverNestedNames) ++ me
+      case _                               => me
     }
+  }
+
+  private def preprocess(options: StyleOptions)(tp: TypescriptType): TypescriptType = tp match {
+    case TSUnion(members) =>
+      TSUnion(members.map {
+        // This is a discrimanted union. Add the discrimator to the underlying type
+        case TSTypeReference(ref, Some(interface: TSInterface), Some(discriminatorValue)) =>
+          TSTypeReference(
+            ref,
+            Some(options.taggedUnionDiscriminator match {
+              case Some(discriminatorField) =>
+                interface.copy(members = interface.members + (discriminatorField -> TSLiteralString(discriminatorValue)))
+              case None => interface
+            })
+          )
+        case other => other
+      })
+    case other => other
   }
 }
