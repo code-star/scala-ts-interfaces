@@ -14,23 +14,24 @@ object TypescriptTypeSerializer {
       case TSBoolean              => "boolean"
       case TSIndexedInterface(indexName, indexType, valueType) =>
         s"{ [ $indexName: ${serialize(indexType)} ]: ${serialize(valueType)}$sc }"
-      case TSIntersection(Seq())  => serialize(TSNever)
-      case TSIntersection(Seq(e)) => serialize(e)
-      case TSIntersection(of)     => s"${of.map(serialize) mkString " | "}"
-      case TSNever                => "never"
-      case TSNull                 => "null"
-      case TSNumber               => "number"
-      case TSObject               => "object"
-      case TSTuple(members)       => s"[${members.map(serialize) mkString ", "}]"
-      case TSString               => "string"
-      case TSUndefined            => "undefined"
-      case TSUnion(Seq())         => serialize(TSNever)
-      case TSUnion(Seq(e))        => serialize(e)
-      case TSUnion(of)            => s"(${of.map(serialize) mkString " | "})"
-      case TSVoid                 => "void"
-      case TSLiteralBoolean(v)    => v.toString()
-      case TSLiteralNumber(v)     => v.toString()
-      case TSLiteralString(v)     => s""""${v.replace("\"", "\"\"")}""""
+      case TSIntersection(Seq())   => serialize(TSNever)
+      case TSIntersection(Seq(e))  => serialize(e)
+      case TSIntersection(of)      => s"${of.map(serialize) mkString " | "}"
+      case TSNever                 => "never"
+      case TSNull                  => "null"
+      case TSNumber                => "number"
+      case TSObject                => "object"
+      case TSTuple(members)        => s"[${members.map(serialize) mkString ", "}]"
+      case TSString                => "string"
+      case TSUndefined             => "undefined"
+      case TSUnion(Seq())          => serialize(TSNever)
+      case TSUnion(Seq(e))         => serialize(e)
+      case TSUnion(of)             => s"(${of.map(serialize) mkString " | "})"
+      case TSVoid                  => "void"
+      case TSLiteralBoolean(v)     => v.toString()
+      case TSLiteralNumber(v)      => v.toString()
+      case TSLiteralString(v)      => s""""${v.replace("\"", "\"\"")}""""
+      case TSTaggedPrimitive(t, u) => s"${serialize(u)} & { __tag_$t: never }"
     }
   }
 

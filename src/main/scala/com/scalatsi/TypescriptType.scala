@@ -63,6 +63,8 @@ object TypescriptType {
     override def withName(newName: String): TSAlias = copy(name = newName)
   }
 
+  case class TSTaggedPrimitive(tag: String, underlying: TypescriptType) extends TypescriptType
+
   case object TSAny                               extends TypescriptType
   case class TSArray(elementType: TypescriptType) extends TypescriptAggregateType { def nested: Set[TypescriptType] = Set(elementType) }
   case object TSBoolean                           extends TypescriptType

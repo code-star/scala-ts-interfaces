@@ -4,6 +4,7 @@ import TypescriptType._
 
 import scala.annotation.implicitNotFound
 import scala.collection.immutable.ListMap
+import scala.reflect.ClassTag
 
 /** A typeclass that indicates what the Typescript equivalent of a type T is
   * See the methods in the TSType object and the [[dsl]] for how to construct it
@@ -129,6 +130,43 @@ object TSType extends DefaultTSTypes {
     valueType: TypescriptType
   ): TSNamedType[T] =
     TSNamedType(TSInterfaceIndexed(name, indexName, indexType, valueType))
+
+  /** Create a tagged primitive type. This can be used in combination with popular type tagging solutions as offered by
+    * Shapeles, Scala-common or Scalaz.
+    *
+    * Usage example 1:
+    *
+    * import shapeless.tag.@@
+    *
+    * sealed trait Name
+    * implicit val tsName: TSType[String @@ Name] = TSType.taggedPrimitive[@@, String, Name]()
+    *
+    * However, it is more common to define a new type with the actual type name and a separately named Tag. In this case
+    * we need to define a naming convention that describes how the tag name relates to the actual type name:
+    *
+    * Usage example 2:
+    *
+    * import shapeless.tag.@@
+    *
+    * sealed trait NameTag
+    * type Name = String @@ NameTag
+    * implicit val tsName: TSType[Name] = TSType.taggedPrimitive[@@, String, NameTag](_.dropRight(3))
+    *
+    * Note: one could also make the tag argument generic and enable tagging for all tagged primitives:
+    *
+    * implicit def tsTaggedString[Tag: ClassTag]: TSType[String @@ Tag] =
+    *   TSType.taggedPrimitive[@@, String, Tag](_.dropRight(3))
+    */
+  def taggedPrimitive[@@[_, _], P: ClassTag, T: ClassTag](namingConvention: String => String = s => s): TSNamedType[@@[P, T]] = {
+    def getTypeName[TT: ClassTag]: String = implicitly[ClassTag[TT]].runtimeClass.getSimpleName
+    val primitive = getTypeName[P] match {
+      case "String"                            => TSString
+      case "int" | "float" | "long" | "double" => TSNumber
+      case t                                   => throw new RuntimeException(s"Cannot handle primitive type $t")
+    }
+    val tName = namingConvention(getTypeName[T])
+    TSNamedType(TSAlias(tName, TSTaggedPrimitive(tName, primitive)))
+  }
 }
 
 @implicitNotFound(

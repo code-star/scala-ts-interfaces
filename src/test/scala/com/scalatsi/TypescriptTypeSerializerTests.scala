@@ -273,4 +273,50 @@ class TypescriptTypeSerializerTests extends AnyFlatSpec with Matchers {
     output.trim should equal(expected)
   }
 
+  it should "handle tagged primitives" in {
+    trait Tagged[U]
+    type @@[T, U] = T with Tagged[U]
+
+    val tsName         = TSType.taggedPrimitive[@@, String, Name]()
+    val tsAgeInt       = TSType.taggedPrimitive[@@, Int, Age]()
+    val tsAgeLong      = TSType.taggedPrimitive[@@, Long, Age]()
+    val tsHeightFloat  = TSType.taggedPrimitive[@@, Float, Height]()
+    val tsHeightDouble = TSType.taggedPrimitive[@@, Double, Height]()
+
+    val outputName         = TypescriptTypeSerializer.emit()(tsName)
+    val outputAgeInt       = TypescriptTypeSerializer.emit()(tsAgeInt)
+    val outputAgeLong      = TypescriptTypeSerializer.emit()(tsAgeLong)
+    val outputHeightFloat  = TypescriptTypeSerializer.emit()(tsHeightFloat)
+    val outputHeightDouble = TypescriptTypeSerializer.emit()(tsHeightDouble)
+
+    val expectedName   = """export type Name = string & { __tag_Name: never }"""
+    val expectedAge    = """export type Age = number & { __tag_Age: never }"""
+    val expectedHeight = """export type Height = number & { __tag_Height: never }"""
+
+    outputName.trim should equal(expectedName)
+    outputAgeInt.trim should equal(expectedAge)
+    outputAgeLong.trim should equal(expectedAge)
+    outputHeightFloat.trim should equal(expectedHeight)
+    outputHeightDouble.trim should equal(expectedHeight)
+  }
+
+  it should "handle tagged primitives with custom naming conventions" in {
+    trait Tagged[U]
+    type @@[T, U]     = T with Tagged[U]
+    @nowarn type Name = String @@ NameTag
+
+    val tsName = TSType.taggedPrimitive[@@, String, NameTag](_.dropRight(3))
+    val output = TypescriptTypeSerializer.emit()(tsName)
+
+    val expected = """export type Name = string & { __tag_Name: never }"""
+
+    output.trim should equal(expected)
+  }
+
 }
+
+// We need to define these traits outside the test to prevent the compiler from adding $1 suffixes
+sealed trait Name
+sealed trait Age
+sealed trait Height
+sealed trait NameTag
