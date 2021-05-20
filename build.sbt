@@ -3,7 +3,7 @@ import sbt.ScriptedPlugin.autoImport.scriptedBufferLog
 
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
-val scala213        = "2.13.5"
+val scala213        = "2.13.6"
 val scala213Version = settingKey[String]("Scala 2.13 version")
 scala213Version := scala213
 val scala212        = "2.12.13"
