@@ -1,5 +1,5 @@
 // code formatting
-addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.2")
+addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.4.3")
 
 // Templating engine for the generator application
 addSbtPlugin("com.typesafe.sbt" % "sbt-twirl" % "1.5.0")
